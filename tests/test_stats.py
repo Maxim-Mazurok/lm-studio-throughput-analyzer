@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 from unittest import TestCase
 
-from lmstudio_analyzer.model import TimingRecord
-from lmstudio_analyzer.stats import analyze, percentile, summarize
+from lmstudio_analyzer.model import TimingRecord, TimingSeries
+from lmstudio_analyzer.stats import analyze, analyze_comparison, percentile, summarize
 
 
 def record(index: int, context: int, prefill: float, decode: float) -> TimingRecord:
@@ -45,3 +45,37 @@ class StatsTests(TestCase):
         self.assertEqual(decode_bins["64–96k"]["summary"]["median"], 4.0)
         self.assertEqual(decode_bins["96k+"]["summary"]["median"], 3.0)
 
+    def test_comparison_keeps_runtime_series_separate(self) -> None:
+        result = analyze_comparison(
+            [
+                TimingSeries(
+                    identifier="lm-studio",
+                    label="LM Studio",
+                    runtime="lm-studio",
+                    records=[record(0, 3000, 200.0, 20.0)],
+                ),
+                TimingSeries(
+                    identifier="llama-server",
+                    label="llama.cpp",
+                    runtime="llama.cpp",
+                    records=[record(0, 3000, 400.0, 40.0)],
+                ),
+            ]
+        )
+
+        self.assertEqual(len(result["series"]), 2)
+        self.assertEqual(result["series"][0]["decode"]["median"], 20.0)
+        self.assertEqual(result["series"][1]["decode"]["median"], 40.0)
+        forward_comparison = result["workload_comparisons"][0]
+        reverse_comparison = result["workload_comparisons"][1]
+        self.assertEqual(forward_comparison["source_id"], "lm-studio")
+        self.assertEqual(forward_comparison["target_id"], "llama-server")
+        self.assertAlmostEqual(
+            forward_comparison["total"]["target_speed_ratio"],
+            2.0,
+        )
+        self.assertAlmostEqual(
+            reverse_comparison["total"]["target_speed_ratio"],
+            0.5,
+        )
+        self.assertEqual(forward_comparison["prefill"]["coverage_fraction"], 1.0)

@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from math import ceil, floor
 from typing import Callable, Iterable, Sequence
 
-from .model import TimingRecord
+from .model import TimingRecord, TimingSeries
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,6 +182,148 @@ def analyze(
         "daily_decode": daily_decode,
         "prefill_by_context": context_prefill,
         "decode_by_context": context_decode,
+        "filters": {
+            "decode_min_tokens": decode_min_tokens,
+            "context_prefill_min_tokens": context_prefill_min_tokens,
+        },
+    }
+
+
+def _context_bin(value: int) -> Bin | None:
+    return next((context_bin for context_bin in CONTEXT_BINS if context_bin.contains(value)), None)
+
+
+def _estimate_workload_metric(
+    source_records: Sequence[TimingRecord],
+    target_records: Sequence[TimingRecord],
+    token_value: Callable[[TimingRecord], int],
+    rate_value: Callable[[TimingRecord], float],
+    predicate: Callable[[TimingRecord], bool],
+) -> dict[str, int | float | None]:
+    eligible_source_records = [
+        record for record in source_records if predicate(record) and rate_value(record) > 0
+    ]
+    target_rates_by_context: dict[str, float] = {}
+    for context_bin in CONTEXT_BINS:
+        target_summary = summarize(
+            rate_value(record)
+            for record in target_records
+            if context_bin.contains(record.context_tokens)
+            and predicate(record)
+            and rate_value(record) > 0
+        )
+        if target_summary.median is not None:
+            target_rates_by_context[context_bin.label] = target_summary.median
+
+    matched_records: list[tuple[TimingRecord, float]] = []
+    for record in eligible_source_records:
+        context_bin = _context_bin(record.context_tokens)
+        if context_bin is None:
+            continue
+        target_rate = target_rates_by_context.get(context_bin.label)
+        if target_rate is not None and target_rate > 0:
+            matched_records.append((record, target_rate))
+
+    source_seconds = sum(
+        token_value(record) / rate_value(record)
+        for record, _target_rate in matched_records
+    )
+    target_seconds = sum(
+        token_value(record) / target_rate
+        for record, target_rate in matched_records
+    )
+    target_speed_ratio = (
+        source_seconds / target_seconds
+        if source_seconds > 0 and target_seconds > 0
+        else None
+    )
+    return {
+        "tokens": sum(token_value(record) for record, _target_rate in matched_records),
+        "request_count": len(matched_records),
+        "eligible_request_count": len(eligible_source_records),
+        "coverage_fraction": (
+            len(matched_records) / len(eligible_source_records)
+            if eligible_source_records
+            else None
+        ),
+        "source_seconds": source_seconds,
+        "target_seconds": target_seconds,
+        "target_speed_ratio": target_speed_ratio,
+    }
+
+
+def _workload_comparison(
+    source_series: TimingSeries,
+    target_series: TimingSeries,
+    decode_min_tokens: int,
+    context_prefill_min_tokens: int,
+) -> dict[str, object]:
+    prefill = _estimate_workload_metric(
+        source_series.records,
+        target_series.records,
+        lambda record: record.evaluated_prompt_tokens,
+        lambda record: record.prefill_tokens_per_second,
+        lambda record: record.evaluated_prompt_tokens >= context_prefill_min_tokens,
+    )
+    decode = _estimate_workload_metric(
+        source_series.records,
+        target_series.records,
+        lambda record: record.decoded_tokens,
+        lambda record: record.decode_tokens_per_second,
+        lambda record: record.decoded_tokens >= decode_min_tokens,
+    )
+    source_seconds = float(prefill["source_seconds"]) + float(decode["source_seconds"])
+    target_seconds = float(prefill["target_seconds"]) + float(decode["target_seconds"])
+    return {
+        "source_id": source_series.identifier,
+        "source_label": source_series.label,
+        "target_id": target_series.identifier,
+        "target_label": target_series.label,
+        "prefill": prefill,
+        "decode": decode,
+        "total": {
+            "source_seconds": source_seconds,
+            "target_seconds": target_seconds,
+            "target_speed_ratio": (
+                source_seconds / target_seconds
+                if source_seconds > 0 and target_seconds > 0
+                else None
+            ),
+        },
+    }
+
+
+def analyze_comparison(
+    timing_series: Sequence[TimingSeries],
+    decode_min_tokens: int = 32,
+    context_prefill_min_tokens: int = 128,
+) -> dict[str, object]:
+    workload_comparisons = [
+        _workload_comparison(
+            source_series,
+            target_series,
+            decode_min_tokens,
+            context_prefill_min_tokens,
+        )
+        for source_series in timing_series
+        for target_series in timing_series
+        if source_series.identifier != target_series.identifier
+    ]
+    return {
+        "series": [
+            {
+                "id": series.identifier,
+                "label": series.label,
+                "runtime": series.runtime,
+                **analyze(
+                    series.records,
+                    decode_min_tokens=decode_min_tokens,
+                    context_prefill_min_tokens=context_prefill_min_tokens,
+                ),
+            }
+            for series in timing_series
+        ],
+        "workload_comparisons": workload_comparisons,
         "filters": {
             "decode_min_tokens": decode_min_tokens,
             "context_prefill_min_tokens": context_prefill_min_tokens,

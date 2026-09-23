@@ -3,7 +3,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
-from lmstudio_analyzer.parser import LMStudioLogParser, parse_logs
+from lmstudio_analyzer.parser import (
+    LMStudioLogParser,
+    LlamaServerLogParser,
+    parse_llama_server_log,
+    parse_logs,
+)
 
 
 MATCHING_LINES = [
@@ -41,3 +46,42 @@ class ParserTests(TestCase):
             records = parse_logs([root], r"Qwen3\.6-35B-A3B")
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0].context_tokens, 10000)
+
+    def test_parses_standalone_llama_server_timing(self) -> None:
+        lines = [
+            "Using RPC-first tensor split 0.4,1; monitor dedicated and shared GPU memory.\n",
+            "0.00.100.000 I srv load_model: loading model 'models/Qwen3.6-35B-A3B.gguf'\n",
+            "0.02.000.000 I slot print_timing: id 0 | task 7 | prompt eval time = 1000.00 ms / 2048 tokens (0.49 ms per token, 2048.00 tokens per second)\n",
+            "0.04.000.000 I slot print_timing: id 0 | task 7 | eval time = 2000.00 ms / 100 tokens (20.00 ms per token, 50.00 tokens per second)\n",
+            "0.04.001.000 I slot release: id 0 | task 7 | stop processing: n_tokens = 10100, truncated = 0\n",
+        ]
+        parser = LlamaServerLogParser(
+            r"Qwen3\.6-35B-A3B",
+            datetime(2026, 1, 2, 3, 4, 5),
+        )
+        records = list(parser.parse_lines(lines))
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].timestamp, datetime(2026, 1, 2, 3, 4, 7))
+        self.assertEqual(records[0].context_tokens, 10000)
+        self.assertEqual(records[0].prefill_tokens_per_second, 2048.0)
+        self.assertEqual(records[0].decode_tokens_per_second, 50.0)
+
+    def test_llama_file_reports_tensor_split(self) -> None:
+        lines = [
+            "Using RPC-first tensor split 0.4,1; monitor dedicated and shared GPU memory.\n",
+            "0.00.100.000 I srv load_model: loading model 'models/Qwen3.6-35B-A3B.gguf'\n",
+            "0.02.000.000 I slot print_timing: id 0 | task 7 | prompt eval time = 1000.00 ms / 2048 tokens (0.49 ms per token, 2048.00 tokens per second)\n",
+            "0.04.000.000 I slot print_timing: id 0 | task 7 | eval time = 2000.00 ms / 100 tokens (20.00 ms per token, 50.00 tokens per second)\n",
+            "0.04.001.000 I slot release: id 0 | task 7 | stop processing: n_tokens = 10100, truncated = 0\n",
+        ]
+        with TemporaryDirectory() as directory:
+            file_path = Path(directory) / "llama.log"
+            file_path.write_text("".join(lines), encoding="utf-8")
+            records, tensor_split = parse_llama_server_log(
+                file_path,
+                r"Qwen3\.6-35B-A3B",
+            )
+
+        self.assertEqual(len(records), 1)
+        self.assertEqual(tensor_split, "0.4,1")

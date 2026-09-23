@@ -28,12 +28,16 @@ def _model_filename(model_path: str) -> str:
     return re.split(r"[\\/]", model_path)[-1]
 
 
-def sanitized_payload(records: Sequence[TimingRecord]) -> dict[str, object]:
+def sanitized_payload(
+    records: Sequence[TimingRecord],
+    runtime: str | None = None,
+    label: str | None = None,
+) -> dict[str, object]:
     """Create content-free performance telemetry from parsed timing records."""
 
-    return {
+    payload: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
-        "description": "Sanitized LM Studio performance telemetry; numeric metrics only.",
+        "description": "Sanitized inference performance telemetry; numeric metrics only.",
         "privacy": {
             "omitted": [
                 "prompts",
@@ -69,17 +73,34 @@ def sanitized_payload(records: Sequence[TimingRecord]) -> dict[str, object]:
             for record in records
         ],
     }
+    if runtime:
+        payload["runtime"] = runtime
+    if label:
+        payload["label"] = label
+    return payload
 
 
-def write_sanitized_dataset(records: Sequence[TimingRecord], output: Path) -> None:
+def write_sanitized_dataset(
+    records: Sequence[TimingRecord],
+    output: Path,
+    runtime: str | None = None,
+    label: str | None = None,
+) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
-        json.dumps(sanitized_payload(records), ensure_ascii=False, indent=2) + "\n",
+        json.dumps(
+            sanitized_payload(records, runtime=runtime, label=label),
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
         encoding="utf-8",
     )
 
 
-def read_sanitized_dataset(source: Path) -> list[TimingRecord]:
+def read_sanitized_dataset_with_metadata(
+    source: Path,
+) -> tuple[list[TimingRecord], dict[str, str]]:
     payload = json.loads(source.read_text(encoding="utf-8"))
     if payload.get("schema_version") != SCHEMA_VERSION:
         raise ValueError(f"Unsupported sanitized dataset schema in {source}")
@@ -105,4 +126,14 @@ def read_sanitized_dataset(source: Path) -> list[TimingRecord]:
                 context_tokens=int(row["context_tokens"]),
             )
         )
+    metadata = {
+        key: str(payload[key])
+        for key in ("runtime", "label")
+        if isinstance(payload.get(key), str) and payload[key]
+    }
+    return records, metadata
+
+
+def read_sanitized_dataset(source: Path) -> list[TimingRecord]:
+    records, _metadata = read_sanitized_dataset_with_metadata(source)
     return records

@@ -12,5 +12,6 @@ build/
 *.gguf
 lmstudio-throughput-report.html
 lmstudio-throughput-summary.json
+runtime-comparison.html
+runtime-comparison-summary.json
 reports/
-

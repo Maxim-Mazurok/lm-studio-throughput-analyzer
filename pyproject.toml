@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lm-studio-throughput-analyzer"
 version = "0.2.0"
-description = "Analyze LM Studio server logs and generate private, offline throughput charts."
+description = "Compare LM Studio and llama.cpp server throughput in private, offline charts."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

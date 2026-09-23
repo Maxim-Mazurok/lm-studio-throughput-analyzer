@@ -6,18 +6,23 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from .dataset import read_sanitized_dataset, write_sanitized_dataset
-from .parser import default_log_paths, parse_logs
+from .dataset import (
+    read_sanitized_dataset,
+    read_sanitized_dataset_with_metadata,
+    write_sanitized_dataset,
+)
+from .model import TimingSeries
+from .parser import default_log_paths, parse_llama_server_log, parse_logs
 from .report import write_report
-from .stats import analyze
+from .stats import analyze_comparison
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lmstudio-throughput",
         description=(
-            "Analyze LM Studio server timing logs and generate a self-contained "
-            "HTML throughput report. Raw log contents are never embedded."
+            "Compare LM Studio and standalone llama.cpp server timing logs in a "
+            "self-contained HTML throughput report. Raw log contents are never embedded."
         ),
     )
     parser.add_argument(
@@ -27,6 +32,26 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Log file or directory. Defaults to ~/.lmstudio/server-logs and "
             "~/.lmstudio/apps/*/server-logs."
+        ),
+    )
+    parser.add_argument(
+        "--llama-log",
+        action="append",
+        default=[],
+        type=Path,
+        help=(
+            "Standalone llama.cpp server log to compare with LM Studio. "
+            "Repeat to add multiple captures."
+        ),
+    )
+    parser.add_argument(
+        "--llama-json",
+        action="append",
+        default=[],
+        type=Path,
+        help=(
+            "Sanitized standalone llama.cpp telemetry to compare with LM Studio. "
+            "Repeat to add multiple datasets."
         ),
     )
     parser.add_argument(
@@ -60,7 +85,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--title",
-        default="LM Studio Throughput Report",
+        default="LM Studio vs llama.cpp Throughput",
         help="Report title.",
     )
     parser.add_argument(
@@ -83,55 +108,118 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    if args.decode_min_tokens < 1 or args.context_prefill_min_tokens < 1:
+def main(command_line_arguments: list[str] | None = None) -> int:
+    arguments = build_parser().parse_args(command_line_arguments)
+    if (
+        arguments.decode_min_tokens < 1
+        or arguments.context_prefill_min_tokens < 1
+    ):
         raise SystemExit("Token thresholds must be positive integers.")
 
-    if args.input_json and args.paths:
+    if arguments.input_json and arguments.paths:
         raise SystemExit("Do not combine --input-json with log paths.")
 
-    if args.input_json:
-        records = read_sanitized_dataset(args.input_json.expanduser().resolve())
+    if arguments.input_json:
+        lm_studio_records = read_sanitized_dataset(
+            arguments.input_json.expanduser().resolve()
+        )
     else:
-        paths = args.paths or default_log_paths()
-        if not paths:
+        lm_studio_paths = arguments.paths or default_log_paths()
+        if (
+            not lm_studio_paths
+            and not arguments.llama_log
+            and not arguments.llama_json
+        ):
             print(
-                "No default LM Studio log directories were found. Pass one or more paths.",
+                "No default LM Studio log directories were found. Pass an LM Studio "
+                "path, --input-json, --llama-json, or --llama-log.",
                 file=sys.stderr,
             )
             return 2
-        records = parse_logs(paths, args.model)
-    if not records:
+        lm_studio_records = parse_logs(lm_studio_paths, arguments.model)
+
+    timing_series: list[TimingSeries] = []
+    if lm_studio_records:
+        timing_series.append(
+            TimingSeries(
+                identifier="lm-studio",
+                label="LM Studio",
+                runtime="lm-studio",
+                records=lm_studio_records,
+            )
+        )
+
+    llama_series_index = 0
+    for llama_dataset_path in arguments.llama_json:
+        llama_series_index += 1
+        llama_records, metadata = read_sanitized_dataset_with_metadata(
+            llama_dataset_path.expanduser().resolve()
+        )
+        if not llama_records:
+            continue
+        timing_series.append(
+            TimingSeries(
+                identifier=f"llama-server-{llama_series_index}",
+                label=metadata.get("label", f"llama.cpp dataset {llama_series_index}"),
+                runtime=metadata.get("runtime", "llama.cpp"),
+                records=llama_records,
+            )
+        )
+
+    for llama_log_path in arguments.llama_log:
+        llama_series_index += 1
+        llama_records, tensor_split = parse_llama_server_log(
+            llama_log_path,
+            arguments.model,
+        )
+        if not llama_records:
+            continue
+        label = (
+            f"llama.cpp · tensor split {tensor_split}"
+            if tensor_split
+            else f"llama.cpp capture {llama_series_index}"
+        )
+        timing_series.append(
+            TimingSeries(
+                identifier=f"llama-server-{llama_series_index}",
+                label=label,
+                runtime="llama.cpp",
+                records=llama_records,
+            )
+        )
+    if not timing_series:
         print(
-            f"No completed timing records matched model expression {args.model!r}.",
+            f"No completed timing records matched model expression {arguments.model!r}.",
             file=sys.stderr,
         )
         return 1
 
-    summary = analyze(
-        records,
-        decode_min_tokens=args.decode_min_tokens,
-        context_prefill_min_tokens=args.context_prefill_min_tokens,
+    summary = analyze_comparison(
+        timing_series,
+        decode_min_tokens=arguments.decode_min_tokens,
+        context_prefill_min_tokens=arguments.context_prefill_min_tokens,
     )
-    output = args.output.expanduser().resolve()
-    write_report(summary, output, args.title, args.model)
+    output = arguments.output.expanduser().resolve()
+    write_report(summary, output, arguments.title, arguments.model)
 
-    if args.export_sanitized:
-        sanitized_output = args.export_sanitized.expanduser().resolve()
-        write_sanitized_dataset(records, sanitized_output)
+    if arguments.export_sanitized:
+        if not lm_studio_records:
+            raise SystemExit("No LM Studio records are available to export.")
+        sanitized_output = arguments.export_sanitized.expanduser().resolve()
+        write_sanitized_dataset(lm_studio_records, sanitized_output)
         print(f"Wrote sanitized telemetry: {sanitized_output}")
 
-    if args.json_summary:
-        json_output = args.json_summary.expanduser().resolve()
+    if arguments.json_summary:
+        json_output = arguments.json_summary.expanduser().resolve()
         json_output.parent.mkdir(parents=True, exist_ok=True)
         json_output.write_text(
             json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         print(f"Wrote aggregate JSON: {json_output}")
 
-    print(f"Matched {len(records):,} completed requests.")
+    for series in timing_series:
+        print(f"Matched {len(series.records):,} completed requests for {series.label}.")
     print(f"Wrote report: {output}")
-    if args.open:
+    if arguments.open:
         webbrowser.open(output.as_uri())
     return 0

@@ -8,18 +8,63 @@ from lmstudio_analyzer.report import write_report
 class ReportTests(TestCase):
     def test_report_contains_only_supplied_aggregates(self) -> None:
         summary = {
-            "record_count": 0,
-            "date_min": None,
-            "date_max": None,
-            "context_min": None,
-            "context_max": None,
-            "decode": {"count": 0, "median": None, "q1": None, "q3": None},
-            "substantial_prefill": {"count": 0, "median": None, "q1": None, "q3": None},
-            "large_prefill": {"count": 0, "median": None, "q1": None, "q3": None},
-            "prefill_by_prompt_tokens": [],
-            "daily_decode": [],
-            "prefill_by_context": [],
-            "decode_by_context": [],
+            "series": [
+                {
+                    "id": "lm-studio",
+                    "label": "LM Studio",
+                    "runtime": "lm-studio",
+                    "record_count": 1,
+                    "context_max": 4096,
+                    "decode": {"median": 20},
+                    "substantial_prefill": {"median": 200},
+                    "prefill_by_prompt_tokens": [],
+                    "prefill_by_context": [],
+                    "decode_by_context": [],
+                },
+                {
+                    "id": "llama-server",
+                    "label": "llama.cpp",
+                    "runtime": "llama.cpp",
+                    "record_count": 1,
+                    "context_max": 4096,
+                    "decode": {"median": 40},
+                    "substantial_prefill": {"median": 400},
+                    "prefill_by_prompt_tokens": [],
+                    "prefill_by_context": [],
+                    "decode_by_context": [],
+                },
+            ],
+            "workload_comparisons": [
+                {
+                    "source_id": "lm-studio",
+                    "source_label": "LM Studio",
+                    "target_id": "llama-server",
+                    "target_label": "llama.cpp",
+                    "prefill": {
+                        "tokens": 2048,
+                        "request_count": 1,
+                        "eligible_request_count": 1,
+                        "coverage_fraction": 1,
+                        "source_seconds": 10.24,
+                        "target_seconds": 5.12,
+                        "target_speed_ratio": 2,
+                    },
+                    "decode": {
+                        "tokens": 128,
+                        "request_count": 1,
+                        "eligible_request_count": 1,
+                        "coverage_fraction": 1,
+                        "source_seconds": 6.4,
+                        "target_seconds": 3.2,
+                        "target_speed_ratio": 2,
+                    },
+                    "total": {
+                        "source_seconds": 16.64,
+                        "target_seconds": 8.32,
+                        "target_speed_ratio": 2,
+                    },
+                }
+            ],
             "filters": {},
         }
         with TemporaryDirectory() as directory:
@@ -27,6 +72,9 @@ class ReportTests(TestCase):
             write_report(summary, output, "Synthetic report", "SyntheticModel")
             content = output.read_text(encoding="utf-8")
             self.assertIn("Synthetic report", content)
+            self.assertIn("LM Studio", content)
+            self.assertIn("llama.cpp", content)
+            self.assertIn("Replay the workload", content)
             self.assertIn("Generated locally", content)
             self.assertNotIn("C:\\Users", content)
             self.assertNotIn("prompt content", content)

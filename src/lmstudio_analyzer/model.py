@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,3 +20,12 @@ class TimingRecord:
     final_slot_tokens: int
     context_tokens: int
 
+
+@dataclass(frozen=True, slots=True)
+class TimingSeries:
+    """One named runtime's timing records for side-by-side analysis."""
+
+    identifier: str
+    label: str
+    runtime: str
+    records: Sequence[TimingRecord]

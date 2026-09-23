@@ -1,25 +1,38 @@
 # LM Studio Throughput Analyzer
 
-Generate a private, self-contained HTML dashboard from LM Studio server logs.
+Generate a private, self-contained HTML dashboard from LM Studio server logs,
+with optional side-by-side comparison against standalone llama.cpp server
+captures.
 The report charts:
 
 - prefill throughput by newly evaluated prompt size;
-- decode throughput by day;
 - prefill throughput by active context size; and
 - decode throughput by active context size.
 
+Every chart overlays the selected runtimes using the same bins, median line, and
+25th–75th percentile whiskers.
+
+The report also replays each runtime's observed token workload against the other
+runtime's median throughput in matching active-context bands. It shows estimated
+prefill, decode, and total compute time in minutes, hours, or days, plus the
+faster/slower multiplier and matched-request coverage.
+
 The analyzer is dependency-free and runs entirely on your computer.
 
-## Included public Qwen dataset
+## Included public Qwen datasets
 
 [`data/qwen3.6-35b-a3b-q4_k_m.json`](data/qwen3.6-35b-a3b-q4_k_m.json)
 contains sanitized, record-level performance telemetry for the Qwen 3.6 35B A3B
-Q4_K_M model. Generate the charts from it without access to the original logs:
+Q4_K_M model in LM Studio.
+[`data/qwen3.6-35b-a3b-q4_k_m-llama-cpp.json`](data/qwen3.6-35b-a3b-q4_k_m-llama-cpp.json)
+contains matching sanitized telemetry from standalone llama.cpp. Generate the
+comparison without access to either original log:
 
 ```powershell
 lmstudio-throughput `
   --input-json data/qwen3.6-35b-a3b-q4_k_m.json `
-  --output qwen-report.html `
+  --llama-json data/qwen3.6-35b-a3b-q4_k_m-llama-cpp.json `
+  --output runtime-comparison.html `
   --open
 ```
 
@@ -55,6 +68,32 @@ LM Studio's normal log locations are discovered automatically:
 lmstudio-throughput --model "Qwen3\.6-35B-A3B" --open
 ```
 
+Compare the included sanitized datasets:
+
+```powershell
+lmstudio-throughput `
+  --input-json data/qwen3.6-35b-a3b-q4_k_m.json `
+  --model "Qwen3\.6-35B-A3B" `
+  --llama-json data/qwen3.6-35b-a3b-q4_k_m-llama-cpp.json `
+  --output runtime-comparison.html `
+  --open
+```
+
+Or compare LM Studio records with a local standalone llama.cpp server capture:
+
+```powershell
+lmstudio-throughput `
+  --input-json data/qwen3.6-35b-a3b-q4_k_m.json `
+  --model "Qwen3\.6-35B-A3B" `
+  --llama-log C:\path\to\llama-server.log `
+  --output runtime-comparison.html `
+  --open
+```
+
+Repeat `--llama-json` or `--llama-log` to compare multiple standalone datasets
+or captures. When a capture contains the launcher’s tensor-split marker, the
+report uses it as the series label automatically.
+
 Or pass specific files or directories:
 
 ```powershell
@@ -88,8 +127,8 @@ numeric performance fields.
 
 ## How context size is reconstructed
 
-LM Studio emits a final slot token count when a task is released. For each completed
-request, the analyzer pairs:
+LM Studio and standalone llama.cpp emit a final slot token count when a task is
+released. For each completed request, the analyzer pairs:
 
 1. `prompt eval time` — newly evaluated prompt tokens and prefill throughput;
 2. `eval time` — decoded tokens and decode throughput; and
@@ -117,10 +156,13 @@ Thresholds are configurable from the command line.
 
 ## Supported log format
 
-The parser targets recent LM Studio server logs backed by llama.cpp-style timing
-messages. It recognizes loaded model paths and pairs timing records by slot and task.
-Files in each supplied directory are processed in sorted order so model state can
-continue across rotated logs.
+The LM Studio parser targets server logs backed by llama.cpp-style timing
+messages. It recognizes loaded model paths and pairs timing records by slot and
+task. Files in each supplied directory are processed in sorted order so model
+state can continue across rotated logs. Standalone captures use elapsed
+timestamps; their wall-clock times are reconstructed from the capture’s modified
+time for ordering only. Throughput and context calculations use the logged timing
+and token values directly.
 
 If LM Studio changes its debug log wording, open an issue with a short **redacted,
 synthetic** example rather than uploading personal logs.

@@ -11,7 +11,7 @@ def write_report(
     title: str,
     model_pattern: str,
 ) -> None:
-    """Write a self-contained offline HTML report containing aggregates only."""
+    """Write a self-contained offline comparison report containing aggregates only."""
 
     payload = json.dumps(summary, ensure_ascii=False, separators=(",", ":")).replace(
         "</", "<\\/"
@@ -31,34 +31,699 @@ _HTML = r'''<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>__TITLE__</title>
-  <meta name="description" content="LM Studio prefill and decode throughput analysis generated locally from server logs.">
+  <meta name="description" content="Local LM Studio and llama.cpp throughput comparison generated from aggregate timing data.">
   <style>
-    :root{color-scheme:light dark;--bg:light-dark(#f5f6fb,#0d0f17);--surface:light-dark(#fff,#151824);--surface2:light-dark(#edf0f8,#1c2030);--text:light-dark(#171a26,#f4f5fb);--muted:light-dark(#62697a,#a4aabd);--line:light-dark(#dfe3ed,#2b3042);--grid:light-dark(#e8ebf2,#252a3a);--a:light-dark(#5865e8,#8d98ff);--b:light-dark(#c04b68,#ff7898);--c:light-dark(#087b69,#55d6bd);--band:light-dark(#e7e9ff,#252b55);--shadow:light-dark(0 18px 50px rgba(36,42,67,.08),0 18px 50px rgba(0,0,0,.2))}
-    *{box-sizing:border-box}html{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}body{margin:0;min-width:320px}.page{width:min(1180px,calc(100% - 40px));margin:auto;padding:42px 0 56px}.mast{display:grid;grid-template-columns:1.35fr .65fr;gap:38px;align-items:end;margin-bottom:30px}.eyebrow{margin:0 0 10px;color:var(--a);font-size:.78rem;font-weight:750;letter-spacing:.13em;text-transform:uppercase}h1{margin:0;font-size:clamp(2rem,5vw,4.3rem);line-height:1;letter-spacing:-.055em}.lede{margin:14px 0 0;color:var(--muted);font-size:1.05rem;line-height:1.6}.meta{border-left:2px solid var(--a);padding-left:20px;color:var(--muted);line-height:1.65}.meta strong{color:var(--text)}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}.metric,.panel{min-width:0;border:1px solid var(--line);border-radius:18px;background:var(--surface);box-shadow:var(--shadow)}.metric{padding:22px}.metric-label{color:var(--muted);font-size:.84rem;font-weight:700}.metric-value{margin:8px 0 0;font-size:clamp(2rem,3vw,3rem);line-height:1;font-variant-numeric:tabular-nums}.metric-value small{color:var(--muted);font-size:.88rem}.metric-range{margin:10px 0 0;color:var(--muted);font-size:.8rem}.grid{display:grid;grid-template-columns:1.05fr .95fr;gap:18px}.panel{padding:22px}.wide{grid-column:1/-1}.panel-head{display:flex;justify-content:space-between;gap:20px;align-items:start;margin-bottom:8px}h2{margin:0;font-size:1.12rem}.copy{margin:6px 0 0;color:var(--muted);font-size:.84rem;line-height:1.5}.legend{color:var(--muted);font-size:.75rem;white-space:nowrap}.plots{display:grid;grid-template-columns:1fr 1fr;gap:24px}.subplot h3{margin:6px 0;color:var(--muted);font-size:.86rem}.chart{width:100%;min-height:330px}.chart svg{display:block;width:100%;height:auto;overflow:visible}.chart text{fill:var(--muted);font:12px inherit}.chart .value{fill:var(--text);font-weight:700}.chart .gridline{stroke:var(--grid)}.chart .axis{stroke:var(--line)}.chart .bar{fill:var(--a);opacity:.85}.chart .band{fill:var(--band)}.chart .line{fill:none;stroke:var(--b);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}.chart .line.prefill{stroke:var(--a)}.chart .point{fill:var(--b);stroke:var(--surface);stroke-width:3}.chart .point.prefill{fill:var(--a)}.chart .whisker{stroke:var(--text);stroke-width:1.5}.tooltip{position:fixed;z-index:5;pointer-events:none;max-width:260px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);box-shadow:var(--shadow);font-size:.78rem;line-height:1.45;opacity:0;transform:translate(-50%,-110%)}.tooltip.show{opacity:1}.tooltip strong{display:block}footer{display:flex;justify-content:space-between;gap:20px;margin-top:18px;color:var(--muted);font-size:.75rem;line-height:1.5}footer p{margin:0}code{color:var(--text)}
-    @media(max-width:860px){.page{width:min(100% - 28px,760px);padding-top:28px}.mast,.grid,.plots{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
-    @media(max-width:620px){.metrics{grid-template-columns:1fr}.page{width:min(100% - 20px,480px)}.panel,.metric{padding:18px}.panel-head{display:block}.legend{margin-top:8px}footer{display:block}footer p+p{margin-top:8px}}
+    :root {
+      color-scheme: light;
+      --paper: oklch(96% 0.025 82);
+      --sheet: oklch(99% 0.012 82);
+      --ink: oklch(23% 0.035 48);
+      --muted: oklch(48% 0.028 53);
+      --faint: oklch(70% 0.022 67);
+      --rule: oklch(82% 0.028 72);
+      --accent: oklch(50% 0.15 38);
+      --focus: oklch(48% 0.14 245);
+      --shadow: 0 1.2rem 3.5rem color-mix(in oklch, var(--ink) 8%, transparent);
+      font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    html { min-width: 20rem; }
+    body { margin: 0; min-height: 100vh; font-variant-numeric: tabular-nums; }
+    button, input { font: inherit; }
+    button:focus-visible, input:focus-visible {
+      outline: 0.16rem solid var(--focus);
+      outline-offset: 0.16rem;
+    }
+    .page {
+      width: min(92rem, 100%);
+      margin-inline: auto;
+      padding: clamp(1.25rem, 4vw, 4rem);
+    }
+    .masthead {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
+      gap: clamp(2rem, 8vw, 8rem);
+      align-items: end;
+      padding: clamp(3rem, 8vw, 7rem) 0 clamp(2rem, 5vw, 4rem);
+      border-bottom: 0.16rem solid var(--ink);
+    }
+    .eyebrow {
+      margin: 0 0 0.8rem;
+      color: var(--accent);
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+    h1, h2 { font-family: Georgia, "Times New Roman", serif; text-wrap: balance; }
+    h1 {
+      margin: 0;
+      max-width: 12ch;
+      font-size: clamp(3.3rem, 8vw, 7.7rem);
+      line-height: 0.86;
+      letter-spacing: -0.06em;
+    }
+    .lede {
+      max-width: 34rem;
+      margin: 0;
+      color: var(--muted);
+      font: clamp(1.05rem, 1.8vw, 1.35rem)/1.55 Georgia, "Times New Roman", serif;
+    }
+    .report-meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin: 0;
+      border-bottom: 0.0625rem solid var(--ink);
+    }
+    .report-meta div { padding: 1rem 1rem 1rem 0; }
+    .report-meta div + div { border-left: 0.0625rem solid var(--rule); padding-left: 1rem; }
+    .report-meta dt {
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .report-meta dd { margin: 0.3rem 0 0; font-size: clamp(1rem, 2vw, 1.45rem); font-weight: 750; }
+    .source-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+      padding: clamp(2rem, 4vw, 3.5rem) 0 1rem;
+      border-bottom: 0.0625rem solid var(--ink);
+    }
+    .source-controls h2 { margin: 0; font-size: clamp(1.45rem, 2.5vw, 2.1rem); }
+    .source-controls p { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.82rem; }
+    .source-picker { display: flex; flex-wrap: wrap; justify-content: end; gap: 0.6rem; }
+    .source-picker label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      min-height: 2.6rem;
+      border: 0.0625rem solid var(--ink);
+      padding: 0.55rem 0.8rem;
+      background: var(--sheet);
+      cursor: pointer;
+    }
+    .source-picker label:has(input:not(:checked)) { color: var(--faint); border-color: var(--rule); }
+    .source-picker input { accent-color: var(--ink); }
+    .source-swatch { width: 1.25rem; height: 0.2rem; background: var(--series-color); }
+    .summary-table { width: 100%; border-collapse: collapse; margin: 0 0 clamp(3rem, 6vw, 6rem); }
+    .summary-table th, .summary-table td {
+      border-bottom: 0.0625rem solid var(--rule);
+      padding: 0.9rem 0.75rem;
+      text-align: right;
+    }
+    .summary-table th:first-child, .summary-table td:first-child { padding-left: 0; text-align: left; }
+    .summary-table th {
+      color: var(--muted);
+      font-size: 0.68rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .summary-table td { font-weight: 700; }
+    .summary-table td small { color: var(--muted); font-weight: 500; }
+    .source-name { display: inline-flex; align-items: center; gap: 0.65rem; }
+    .source-name::before { width: 1.5rem; height: 0.22rem; background: var(--series-color); content: ""; }
+    .workload-estimator {
+      margin: 0 0 clamp(3.5rem, 8vw, 7rem);
+      border-block: 0.16rem solid var(--ink);
+      padding: clamp(1.5rem, 4vw, 3rem) 0;
+    }
+    .workload-heading {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 2rem;
+      align-items: end;
+    }
+    .workload-heading h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.8rem); letter-spacing: -0.035em; }
+    .workload-heading p { max-width: 52rem; margin: 0.45rem 0 0; color: var(--muted); }
+    .workload-picker { display: flex; flex-wrap: wrap; justify-content: end; border: 0.0625rem solid var(--ink); }
+    .workload-picker button {
+      min-height: 2.7rem;
+      border: 0;
+      background: transparent;
+      padding: 0.55rem 0.85rem;
+      cursor: pointer;
+    }
+    .workload-picker button + button { border-left: 0.0625rem solid var(--ink); }
+    .workload-picker button[aria-pressed="true"] { background: var(--ink); color: var(--sheet); }
+    .workload-verdict {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(15rem, 0.75fr);
+      gap: clamp(2rem, 6vw, 7rem);
+      align-items: end;
+      padding: clamp(2rem, 5vw, 4.5rem) 0;
+    }
+    .workload-verdict strong {
+      display: block;
+      max-width: 17ch;
+      font: 700 clamp(2rem, 5vw, 5rem)/0.95 Georgia, "Times New Roman", serif;
+      letter-spacing: -0.045em;
+    }
+    .workload-verdict p { max-width: 34rem; margin: 0; color: var(--muted); font-size: 1rem; line-height: 1.65; }
+    .duration-chart { display: grid; gap: 1.2rem; }
+    .duration-row { display: grid; grid-template-columns: minmax(12rem, 0.32fr) minmax(18rem, 1fr) auto; gap: 1rem; align-items: center; }
+    .duration-label strong, .duration-label small { display: block; }
+    .duration-label small { color: var(--muted); font-size: 0.72rem; }
+    .duration-track { display: flex; height: 2.25rem; background: color-mix(in oklch, var(--rule) 45%, transparent); }
+    .duration-segment { min-width: 0.12rem; transform-origin: left; }
+    .duration-segment.prefill { background: var(--accent); }
+    .duration-segment.decode { background: oklch(42% 0.1 250); }
+    .duration-time { min-width: 7rem; text-align: right; font: 700 1.15rem Georgia, "Times New Roman", serif; }
+    .duration-legend { display: flex; justify-content: end; gap: 1rem; color: var(--muted); font-size: 0.72rem; }
+    .duration-legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .duration-legend i { width: 0.9rem; height: 0.2rem; background: var(--accent); }
+    .duration-legend span:last-child i { background: oklch(42% 0.1 250); }
+    .phase-comparison { width: 100%; border-collapse: collapse; margin-top: 2rem; }
+    .phase-comparison th, .phase-comparison td { border-top: 0.0625rem solid var(--rule); padding: 0.8rem 0.7rem; text-align: right; }
+    .phase-comparison th:first-child, .phase-comparison td:first-child { padding-left: 0; text-align: left; }
+    .phase-comparison th { color: var(--muted); font-size: 0.67rem; letter-spacing: 0.06em; text-transform: uppercase; }
+    .phase-comparison td { font-size: 0.86rem; font-weight: 700; }
+    .estimation-note { max-width: 78rem; margin: 1rem 0 0; color: var(--muted); font-size: 0.75rem; line-height: 1.55; }
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(3rem, 6vw, 6rem) clamp(1.5rem, 3vw, 3rem);
+    }
+    .chart-panel { min-width: 0; }
+    .chart-panel:last-child { grid-column: 1 / -1; }
+    .chart-heading { min-height: 5.4rem; border-top: 0.0625rem solid var(--rule); padding-top: 0.8rem; }
+    .chart-heading h2 { margin: 0; font-size: clamp(1.4rem, 2.5vw, 2rem); }
+    .chart-heading p { max-width: 48rem; margin: 0.3rem 0 0; color: var(--muted); font-size: 0.84rem; }
+    .chart-frame {
+      min-height: 25rem;
+      border: 0.0625rem solid var(--rule);
+      background-color: var(--sheet);
+      background-image:
+        linear-gradient(to right, color-mix(in oklch, var(--rule) 18%, transparent) 1px, transparent 1px),
+        linear-gradient(to bottom, color-mix(in oklch, var(--rule) 18%, transparent) 1px, transparent 1px);
+      background-size: 2rem 2rem;
+      box-shadow: var(--shadow);
+    }
+    .chart-frame svg { display: block; width: 100%; height: auto; min-height: 25rem; }
+    .chart-frame text { fill: var(--muted); font: 0.72rem "Avenir Next", Avenir, sans-serif; }
+    .chart-frame .axis { stroke: var(--ink); stroke-width: 1.1; }
+    .chart-frame .gridline { stroke: var(--rule); stroke-width: 0.8; }
+    .chart-frame .series-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .chart-frame .whisker { stroke-width: 1.5; }
+    .chart-frame .point { stroke: var(--sheet); stroke-width: 2.5; }
+    .empty-chart { display: grid; min-height: 25rem; place-items: center; color: var(--muted); }
+    .method-note {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 1rem 2rem;
+      margin-top: clamp(3rem, 7vw, 7rem);
+      border-top: 0.16rem solid var(--ink);
+      padding-top: 1rem;
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.6;
+    }
+    .method-note strong { color: var(--ink); }
+    .method-note p { max-width: 80ch; margin: 0; }
+    .method-note code { color: var(--ink); }
+    @media (max-width: 62rem) {
+      .chart-grid { grid-template-columns: 1fr; }
+      .chart-panel:last-child { grid-column: auto; }
+    }
+    @media (max-width: 44rem) {
+      .page { padding-inline: max(0.9rem, env(safe-area-inset-left)); }
+      .masthead { grid-template-columns: 1fr; gap: 1.5rem; }
+      .report-meta { grid-template-columns: 1fr; }
+      .report-meta div + div { border-top: 0.0625rem solid var(--rule); border-left: 0; padding-left: 0; }
+      .source-controls { align-items: start; flex-direction: column; }
+      .source-picker { justify-content: start; }
+      .summary-table { display: block; overflow-x: auto; }
+      .workload-heading, .workload-verdict { grid-template-columns: 1fr; }
+      .workload-picker { justify-self: start; }
+      .duration-row { grid-template-columns: 1fr auto; }
+      .duration-track { grid-column: 1 / -1; grid-row: 2; }
+      .phase-comparison { display: block; overflow-x: auto; }
+      .chart-heading { min-height: 0; padding-bottom: 0.8rem; }
+      .chart-frame, .chart-frame svg { min-height: 21rem; }
+      .method-note { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; }
+    }
   </style>
 </head>
 <body>
   <main class="page">
-    <header class="mast"><div><p class="eyebrow">LM Studio log analysis</p><h1 id="headline">Throughput report</h1><p class="lede">Prefill, decode, and active-context performance calculated locally from completed timing records.</p></div><div class="meta"><div><strong id="count">0</strong> paired requests</div><div id="dates">No dates</div><div>Model filter: <code>__MODEL_PATTERN__</code></div></div></header>
-    <section class="metrics" aria-label="Typical throughput"><article class="metric"><div class="metric-label">Typical decode</div><div class="metric-value" id="decodeMetric">—</div><p class="metric-range" id="decodeRange"></p></article><article class="metric"><div class="metric-label">Substantial prefill · 512+ evaluated tokens</div><div class="metric-value" id="prefillMetric">—</div><p class="metric-range" id="prefillRange"></p></article><article class="metric"><div class="metric-label">Large prefill · 2k+ evaluated tokens</div><div class="metric-value" id="largeMetric">—</div><p class="metric-range" id="largeRange"></p></article></section>
-    <section class="grid" aria-label="Throughput charts"><article class="panel"><div class="panel-head"><div><h2>Prefill by evaluated prompt size</h2><p class="copy">Shows batching efficiency for newly evaluated tokens.</p></div><div class="legend">Median · middle 50%</div></div><div class="chart" id="promptChart"></div></article><article class="panel"><div class="panel-head"><div><h2>Decode by day</h2><p class="copy">Makes session-to-session variability visible.</p></div><div class="legend">Median · middle 50%</div></div><div class="chart" id="dailyChart"></div></article><article class="panel wide"><div class="panel-head"><div><h2>Throughput by active context size</h2><p class="copy">Context at decode start is reconstructed as final slot tokens minus decoded tokens.</p></div><div class="legend">Median · middle 50%</div></div><div class="plots"><section class="subplot"><h3>Prefill</h3><div class="chart" id="contextPrefill"></div></section><section class="subplot"><h3>Decode</h3><div class="chart" id="contextDecode"></div></section></div></article></section>
-    <footer><p>Generated locally. The report contains aggregates only—no prompts, responses, log lines, or source paths.</p><p>Median line · 25th–75th percentile band</p></footer>
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Local inference field test</p>
+        <h1>Runtime showdown</h1>
+      </div>
+      <p class="lede">LM Studio and standalone llama.cpp measured on equal statistical ground: medians by active context, with the middle 50% left visible.</p>
+    </header>
+
+    <dl class="report-meta">
+      <div><dt>Runtimes</dt><dd id="runtimeCount">0</dd></div>
+      <div><dt>Completed requests</dt><dd id="requestCount">0</dd></div>
+      <div><dt>Model filter</dt><dd><code>__MODEL_PATTERN__</code></dd></div>
+    </dl>
+
+    <section class="source-controls" aria-labelledby="sourceTitle">
+      <div>
+        <h2 id="sourceTitle">Evidence on the charts</h2>
+        <p>Toggle a runtime without changing the underlying aggregate.</p>
+      </div>
+      <div class="source-picker" id="sourcePicker"></div>
+    </section>
+
+    <table class="summary-table">
+      <thead>
+        <tr>
+          <th>Runtime</th>
+          <th>Requests</th>
+          <th>Median prefill</th>
+          <th>Median decode</th>
+          <th>Maximum context</th>
+        </tr>
+      </thead>
+      <tbody id="summaryRows"></tbody>
+    </table>
+
+    <section class="workload-estimator" aria-labelledby="workloadTitle">
+      <div class="workload-heading">
+        <div>
+          <p class="eyebrow">Same tokens, another engine</p>
+          <h2 id="workloadTitle">Replay the workload</h2>
+          <p>Estimate how long one runtime would take to process the other runtime’s observed prefill and decode work.</p>
+        </div>
+        <div class="workload-picker" id="workloadPicker" role="group" aria-label="Workload to replay"></div>
+      </div>
+      <div class="workload-verdict">
+        <strong id="workloadVerdict">Select a workload comparison.</strong>
+        <p id="workloadExplanation"></p>
+      </div>
+      <div class="duration-chart" id="durationChart" aria-label="Estimated workload duration comparison"></div>
+      <div class="duration-legend"><span><i></i>Prefill</span><span><i></i>Decode</span></div>
+      <table class="phase-comparison">
+        <thead>
+          <tr>
+            <th>Phase</th>
+            <th>Token workload</th>
+            <th id="sourceTimeHeading">Measured source</th>
+            <th id="targetTimeHeading">Estimated target</th>
+            <th>Target pace</th>
+            <th>Coverage</th>
+          </tr>
+        </thead>
+        <tbody id="phaseComparisonRows"></tbody>
+      </table>
+      <p class="estimation-note">Estimate method: each source request uses the target runtime’s median throughput from the same active-context band. Requests are omitted only when the target has no evidence in that band; coverage reports the included share. Times represent prompt evaluation plus decode compute, not queueing, model load, or application overhead.</p>
+    </section>
+
+    <section class="chart-grid" aria-label="Runtime comparison charts">
+      <article class="chart-panel">
+        <div class="chart-heading">
+          <h2>Prefill by active context</h2>
+          <p>Only requests meeting the configured evaluated-token floor contribute.</p>
+        </div>
+        <div class="chart-frame" id="contextPrefillChart"></div>
+      </article>
+      <article class="chart-panel">
+        <div class="chart-heading">
+          <h2>Decode by active context</h2>
+          <p>Short outputs are excluded so setup overhead does not dominate decode rate.</p>
+        </div>
+        <div class="chart-frame" id="contextDecodeChart"></div>
+      </article>
+      <article class="chart-panel">
+        <div class="chart-heading">
+          <h2>Prefill by evaluated prompt size</h2>
+          <p>Separates batching efficiency from the cost of attending over retained context.</p>
+        </div>
+        <div class="chart-frame" id="promptPrefillChart"></div>
+      </article>
+    </section>
+
+    <footer class="method-note">
+      <strong>Method</strong>
+      <p>Generated locally from completed timing records. The report contains aggregates only—no prompts, responses, raw log lines, source paths, or model files. Lines show medians; whiskers show the 25th–75th percentile range.</p>
+    </footer>
   </main>
-  <div class="tooltip" id="tip" role="tooltip" aria-hidden="true"></div>
+
   <script>
-    const data=__DATA__,NS='http://www.w3.org/2000/svg',tip=document.getElementById('tip');
-    const el=(n,a={},t='')=>{const x=document.createElementNS(NS,n);Object.entries(a).forEach(([k,v])=>x.setAttribute(k,v));if(t)x.textContent=t;return x};
-    const fmt=v=>v==null?'—':Number(v).toFixed(1), summary=id=>data[id]||{};
-    function metric(valueId,rangeId,s){document.getElementById(valueId).innerHTML=s.median==null?'—':`${fmt(s.median)} <small>tok/s</small>`;document.getElementById(rangeId).textContent=s.q1==null?'':`Middle 50%: ${fmt(s.q1)}–${fmt(s.q3)} tok/s · n=${s.count.toLocaleString()}`}
-    document.getElementById('count').textContent=data.record_count.toLocaleString();document.getElementById('dates').textContent=data.date_min?`${data.date_min} to ${data.date_max}`:'No matching dates';document.getElementById('headline').textContent=data.decode.median==null?'No matching timing records':`Decode runs at about ${fmt(data.decode.median)} tokens per second.`;metric('decodeMetric','decodeRange',summary('decode'));metric('prefillMetric','prefillRange',summary('substantial_prefill'));metric('largeMetric','largeRange',summary('large_prefill'));
-    function show(e,title,body){tip.innerHTML=`<strong>${title}</strong>${body}`;tip.style.left=`${Math.min(innerWidth-130,Math.max(130,e.clientX||innerWidth/2))}px`;tip.style.top=`${Math.max(90,e.clientY||120)}px`;tip.classList.add('show');tip.setAttribute('aria-hidden','false')}function hide(){tip.classList.remove('show');tip.setAttribute('aria-hidden','true')}
-    function base(id,maxY,label){const host=document.getElementById(id);host.replaceChildren();const w=Math.max(320,Math.round(host.getBoundingClientRect().width)),h=350,m={top:28,right:14,bottom:58,left:w<430?48:58},iw=w-m.left-m.right,ih=h-m.top-m.bottom,svg=el('svg',{viewBox:`0 0 ${w} ${h}`,role:'img','aria-label':label}),g=el('g',{transform:`translate(${m.left} ${m.top})`}),y=v=>ih-v/maxY*ih;svg.append(el('title',{},label));svg.append(g);for(let i=0;i<=4;i++){const v=maxY*i/4,py=y(v);g.append(el('line',{class:'gridline',x1:0,x2:iw,y1:py,y2:py}));g.append(el('text',{x:-10,y:py+4,'text-anchor':'end'},v.toFixed(0)))}g.append(el('line',{class:'axis',x1:0,x2:iw,y1:ih,y2:ih}));svg.append(el('text',{x:15,y:m.top+ih/2,transform:`rotate(-90 15 ${m.top+ih/2})`,'text-anchor':'middle'},'Throughput (tok/s)'));host.append(svg);return{host,svg,g,w,iw,ih,m,y,compact:w<430}}
-    function series(id,rows,keys,opt){const valid=rows.filter(d=>d.summary&&d.summary.median!=null),c=base(id,opt.maxY,opt.aria);if(!valid.length)return;const step=c.iw/(valid.length-1||1),pts=valid.map((d,i)=>({...d,x:i*step})),path=(key,reverse=false)=>{const a=reverse?[...pts].reverse():pts;return a.map((d,i)=>`${i?'L':'M'} ${d.x} ${c.y(d.summary[key])}`).join(' ')},band=`${path(keys.q3)} ${[...pts].reverse().map(d=>`L ${d.x} ${c.y(d.summary[keys.q1])}`).join(' ')} Z`;c.g.append(el('path',{class:'band',d:band}));c.g.append(el('path',{class:`line ${opt.prefill?'prefill':''}`,d:path(keys.med)}));pts.forEach((d,i)=>{const p=el('circle',{class:`point ${opt.prefill?'prefill':''}`,cx:d.x,cy:c.y(d.summary.median),r:5,tabindex:0,role:'graphics-symbol','aria-label':`${d.label||d.date}, median ${fmt(d.summary.median)} tokens per second`}),f=e=>show(e,d.label||d.date,`Median ${fmt(d.summary.median)} tok/s<br>Middle 50% ${fmt(d.summary.q1)}–${fmt(d.summary.q3)}<br>n=${d.summary.count.toLocaleString()}`);p.addEventListener('pointermove',f);p.addEventListener('focus',f);p.addEventListener('pointerleave',hide);p.addEventListener('blur',hide);c.g.append(p);c.g.append(el('text',{class:'value',x:d.x,y:c.y(d.summary.median)-11,'text-anchor':i===0?'start':i===pts.length-1?'end':'middle'},opt.value(d.summary.median)));if(!c.compact||i%2===0||i===pts.length-1)c.g.append(el('text',{x:d.x,y:c.ih+24,'text-anchor':i===0?'start':i===pts.length-1?'end':'middle'},opt.label(d))) });c.svg.append(el('text',{x:c.m.left+c.iw/2,y:344,'text-anchor':'middle'},opt.xTitle))}
-    function bars(){const rows=data.prefill_by_prompt_tokens.filter(d=>d.summary.median!=null),c=base('promptChart',Math.max(10,...rows.map(d=>d.summary.q3))*1.12,'Prefill throughput by evaluated prompt tokens'),slot=c.iw/rows.length,bw=Math.min(58,slot*.56);rows.forEach((d,i)=>{const x=slot*i+slot/2,r=el('rect',{class:'bar',x:x-bw/2,y:c.y(d.summary.median),width:bw,height:c.ih-c.y(d.summary.median),rx:6,tabindex:0}),f=e=>show(e,`${d.label} evaluated tokens`,`Median ${fmt(d.summary.median)} tok/s<br>Middle 50% ${fmt(d.summary.q1)}–${fmt(d.summary.q3)}<br>n=${d.summary.count.toLocaleString()}`);r.addEventListener('pointermove',f);r.addEventListener('focus',f);r.addEventListener('pointerleave',hide);r.addEventListener('blur',hide);c.g.append(r);c.g.append(el('line',{class:'whisker',x1:x,x2:x,y1:c.y(d.summary.q1),y2:c.y(d.summary.q3)}));c.g.append(el('text',{class:'value',x,y:c.y(d.summary.q3)-8,'text-anchor':'middle'},d.summary.median.toFixed(0)));c.g.append(el('text',{x,y:c.ih+24,'text-anchor':'middle'},d.label))});c.svg.append(el('text',{x:c.m.left+c.iw/2,y:344,'text-anchor':'middle'},'Prompt tokens evaluated per request'))}
-    function draw(){bars();series('dailyChart',data.daily_decode,{med:'median',q1:'q1',q3:'q3'},{maxY:Math.max(10,...data.daily_decode.map(d=>d.summary.q3||0))*1.1,aria:'Decode throughput by day',prefill:false,value:v=>v.toFixed(1),label:d=>d.date.slice(5),xTitle:'Completion date'});series('contextPrefill',data.prefill_by_context,{med:'median',q1:'q1',q3:'q3'},{maxY:Math.max(10,...data.prefill_by_context.map(d=>d.summary.q3||0))*1.1,aria:'Prefill throughput by active context',prefill:true,value:v=>v.toFixed(0),label:d=>d.label,xTitle:'Active context at decode start (tokens)'});series('contextDecode',data.decode_by_context,{med:'median',q1:'q1',q3:'q3'},{maxY:Math.max(10,...data.decode_by_context.map(d=>d.summary.q3||0))*1.1,aria:'Decode throughput by active context',prefill:false,value:v=>v.toFixed(1),label:d=>d.label,xTitle:'Active context at decode start (tokens)'})}
-    let frame;new ResizeObserver(()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(draw)}).observe(document.querySelector('.grid'));draw();
+    const reportData = __DATA__;
+    const seriesColors = ["#b74228", "#254b76", "#2f766f", "#9b6b00", "#8f3f65", "#684f8e"];
+    const svgNamespace = "http://www.w3.org/2000/svg";
+    const visibleSeriesIdentifiers = new Set(reportData.series.map((series) => series.id));
+    let selectedWorkloadComparisonIndex = 0;
+
+    function formatNumber(value, digits = 1) {
+      if (value == null || !Number.isFinite(Number(value))) return "—";
+      return Number(value).toLocaleString(undefined, { maximumFractionDigits: digits });
+    }
+
+    function formatDuration(seconds) {
+      if (seconds == null || !Number.isFinite(Number(seconds))) return "—";
+      const totalSeconds = Number(seconds);
+      if (totalSeconds < 60) return `${formatNumber(totalSeconds)} sec`;
+      if (totalSeconds < 3600) return `${formatNumber(totalSeconds / 60)} min`;
+      if (totalSeconds < 86400) return `${formatNumber(totalSeconds / 3600, 2)} hr`;
+      return `${formatNumber(totalSeconds / 86400, 2)} days`;
+    }
+
+    function formatPace(targetSpeedRatio) {
+      if (targetSpeedRatio == null || !Number.isFinite(Number(targetSpeedRatio))) return "—";
+      if (targetSpeedRatio >= 1) return `${formatNumber(targetSpeedRatio, 2)}× faster`;
+      return `${formatNumber(1 / targetSpeedRatio, 2)}× slower`;
+    }
+
+    function createSvgElement(name, attributes = {}, text = "") {
+      const element = document.createElementNS(svgNamespace, name);
+      for (const [attribute, value] of Object.entries(attributes)) {
+        element.setAttribute(attribute, value);
+      }
+      if (text) element.textContent = text;
+      return element;
+    }
+
+    function createSummaryValueCell(value, unit = "") {
+      const cell = document.createElement("td");
+      cell.append(document.createTextNode(value));
+      if (unit) {
+        const suffix = document.createElement("small");
+        suffix.textContent = ` ${unit}`;
+        cell.append(suffix);
+      }
+      return cell;
+    }
+
+    function renderSummary() {
+      document.getElementById("runtimeCount").textContent = reportData.series.length.toLocaleString();
+      document.getElementById("requestCount").textContent = reportData.series
+        .reduce((total, series) => total + series.record_count, 0)
+        .toLocaleString();
+
+      const sourcePicker = document.getElementById("sourcePicker");
+      const summaryRows = document.getElementById("summaryRows");
+      sourcePicker.replaceChildren();
+      summaryRows.replaceChildren();
+
+      reportData.series.forEach((series, index) => {
+        const color = seriesColors[index % seriesColors.length];
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = visibleSeriesIdentifiers.has(series.id);
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) visibleSeriesIdentifiers.add(series.id);
+          else visibleSeriesIdentifiers.delete(series.id);
+          drawCharts();
+        });
+        const swatch = document.createElement("span");
+        swatch.className = "source-swatch";
+        swatch.style.setProperty("--series-color", color);
+        const name = document.createElement("span");
+        name.textContent = series.label;
+        label.append(checkbox, swatch, name);
+        sourcePicker.append(label);
+
+        const row = document.createElement("tr");
+        row.dataset.seriesIdentifier = series.id;
+        const sourceCell = document.createElement("td");
+        const sourceName = document.createElement("span");
+        sourceName.className = "source-name";
+        sourceName.style.setProperty("--series-color", color);
+        sourceName.textContent = series.label;
+        sourceCell.append(sourceName);
+        row.append(
+          sourceCell,
+          createSummaryValueCell(series.record_count.toLocaleString()),
+          createSummaryValueCell(formatNumber(series.substantial_prefill.median), "tok/s"),
+          createSummaryValueCell(formatNumber(series.decode.median), "tok/s"),
+          createSummaryValueCell(formatNumber(series.context_max, 0), "tokens"),
+        );
+        summaryRows.append(row);
+      });
+    }
+
+    function createDurationRow(label, qualifier, prefillSeconds, decodeSeconds, maximumSeconds) {
+      const row = document.createElement("div");
+      row.className = "duration-row";
+      const labelContainer = document.createElement("div");
+      labelContainer.className = "duration-label";
+      const name = document.createElement("strong");
+      name.textContent = label;
+      const detail = document.createElement("small");
+      detail.textContent = qualifier;
+      labelContainer.append(name, detail);
+
+      const track = document.createElement("div");
+      track.className = "duration-track";
+      const prefill = document.createElement("span");
+      prefill.className = "duration-segment prefill";
+      prefill.style.width = `${prefillSeconds / maximumSeconds * 100}%`;
+      prefill.title = `Prefill: ${formatDuration(prefillSeconds)}`;
+      const decode = document.createElement("span");
+      decode.className = "duration-segment decode";
+      decode.style.width = `${decodeSeconds / maximumSeconds * 100}%`;
+      decode.title = `Decode: ${formatDuration(decodeSeconds)}`;
+      track.append(prefill, decode);
+
+      const duration = document.createElement("div");
+      duration.className = "duration-time";
+      duration.textContent = formatDuration(prefillSeconds + decodeSeconds);
+      row.append(labelContainer, track, duration);
+      return row;
+    }
+
+    function createPhaseComparisonRow(label, metric) {
+      const row = document.createElement("tr");
+      const values = [
+        label,
+        `${formatNumber(metric.tokens, 0)} tokens · ${metric.request_count.toLocaleString()} requests`,
+        formatDuration(metric.source_seconds),
+        formatDuration(metric.target_seconds),
+        formatPace(metric.target_speed_ratio),
+        metric.coverage_fraction == null ? "—" : `${formatNumber(metric.coverage_fraction * 100)}%`,
+      ];
+      values.forEach((value, index) => {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        if (index === 0) {
+          const strong = document.createElement("strong");
+          strong.textContent = value;
+          cell.replaceChildren(strong);
+        }
+        row.append(cell);
+      });
+      return row;
+    }
+
+    function renderWorkloadComparison() {
+      const comparisons = reportData.workload_comparisons || [];
+      const picker = document.getElementById("workloadPicker");
+      picker.replaceChildren();
+      if (!comparisons.length) {
+        document.getElementById("workloadVerdict").textContent = "Add two runtimes to estimate replay time.";
+        document.getElementById("workloadExplanation").textContent = "";
+        return;
+      }
+
+      comparisons.forEach((comparison, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.setAttribute("aria-pressed", String(index === selectedWorkloadComparisonIndex));
+        button.textContent = `${comparison.source_label} workload`;
+        button.addEventListener("click", () => {
+          selectedWorkloadComparisonIndex = index;
+          renderWorkloadComparison();
+        });
+        picker.append(button);
+      });
+
+      const comparison = comparisons[selectedWorkloadComparisonIndex];
+      const targetPace = formatPace(comparison.total.target_speed_ratio);
+      document.getElementById("workloadVerdict").textContent =
+        `${comparison.target_label} is estimated ${targetPace}`;
+      document.getElementById("workloadExplanation").textContent =
+        `${comparison.source_label} processed the matched work in ${formatDuration(comparison.total.source_seconds)}. At ${comparison.target_label} rates from the same context bands, it would take about ${formatDuration(comparison.total.target_seconds)}.`;
+      document.getElementById("sourceTimeHeading").textContent =
+        `${comparison.source_label} measured`;
+      document.getElementById("targetTimeHeading").textContent =
+        `${comparison.target_label} estimated`;
+
+      const maximumSeconds = Math.max(
+        comparison.total.source_seconds,
+        comparison.total.target_seconds,
+        1,
+      );
+      const durationChart = document.getElementById("durationChart");
+      durationChart.replaceChildren(
+        createDurationRow(
+          comparison.source_label,
+          "Measured workload",
+          comparison.prefill.source_seconds,
+          comparison.decode.source_seconds,
+          maximumSeconds,
+        ),
+        createDurationRow(
+          comparison.target_label,
+          "Estimated replay",
+          comparison.prefill.target_seconds,
+          comparison.decode.target_seconds,
+          maximumSeconds,
+        ),
+      );
+
+      const phaseComparisonRows = document.getElementById("phaseComparisonRows");
+      phaseComparisonRows.replaceChildren(
+        createPhaseComparisonRow("Prefill", comparison.prefill),
+        createPhaseComparisonRow("Decode", comparison.decode),
+      );
+    }
+
+    function drawComparisonChart(elementId, summaryKey) {
+      const host = document.getElementById(elementId);
+      const visibleSeries = reportData.series.filter(
+        (series) => visibleSeriesIdentifiers.has(series.id),
+      );
+      host.replaceChildren();
+      if (!visibleSeries.length) {
+        const emptyState = document.createElement("div");
+        emptyState.className = "empty-chart";
+        emptyState.textContent = "Select a runtime to draw this chart.";
+        host.append(emptyState);
+        return;
+      }
+
+      const categories = visibleSeries[0][summaryKey].map((item) => item.label);
+      const summaries = visibleSeries.flatMap((series) => series[summaryKey]);
+      const maximumValue = Math.max(
+        1,
+        ...summaries.flatMap((item) => [
+          item.summary.q3 || 0,
+          item.summary.maximum || 0,
+        ]),
+      );
+      const width = 820;
+      const height = 410;
+      const margin = { top: 28, right: 26, bottom: 58, left: 72 };
+      const innerWidth = width - margin.left - margin.right;
+      const innerHeight = height - margin.top - margin.bottom;
+      const x = (index) => (
+        margin.left
+        + (categories.length === 1 ? innerWidth / 2 : index / (categories.length - 1) * innerWidth)
+      );
+      const y = (value) => margin.top + innerHeight - value / maximumValue * innerHeight;
+      const svg = createSvgElement("svg", {
+        viewBox: `0 0 ${width} ${height}`,
+        role: "img",
+        "aria-label": "Median throughput comparison with interquartile whiskers",
+      });
+
+      for (let index = 0; index <= 5; index += 1) {
+        const value = maximumValue * index / 5;
+        const verticalPosition = y(value);
+        svg.append(createSvgElement("line", {
+          class: "gridline",
+          x1: margin.left,
+          x2: width - margin.right,
+          y1: verticalPosition,
+          y2: verticalPosition,
+        }));
+        svg.append(createSvgElement("text", {
+          x: margin.left - 10,
+          y: verticalPosition + 4,
+          "text-anchor": "end",
+        }, formatNumber(value)));
+      }
+
+      svg.append(createSvgElement("line", {
+        class: "axis",
+        x1: margin.left,
+        x2: width - margin.right,
+        y1: margin.top + innerHeight,
+        y2: margin.top + innerHeight,
+      }));
+
+      categories.forEach((category, index) => {
+        svg.append(createSvgElement("text", {
+          x: x(index),
+          y: height - 26,
+          "text-anchor": "middle",
+        }, category));
+      });
+
+      visibleSeries.forEach((series) => {
+        const sourceIndex = reportData.series.findIndex(
+          (candidate) => candidate.id === series.id,
+        );
+        const color = seriesColors[sourceIndex % seriesColors.length];
+        const points = series[summaryKey]
+          .map((item, index) => ({ index, item }))
+          .filter(({ item }) => item.summary.median != null);
+        if (!points.length) return;
+
+        const pathData = points.map(({ index, item }, pointIndex) => (
+          `${pointIndex ? "L" : "M"} ${x(index)} ${y(item.summary.median)}`
+        )).join(" ");
+        svg.append(createSvgElement("path", {
+          class: "series-line",
+          d: pathData,
+          stroke: color,
+        }));
+
+        points.forEach(({ index, item }) => {
+          const horizontalPosition = x(index);
+          const lowerPosition = y(item.summary.q1 ?? item.summary.median);
+          const upperPosition = y(item.summary.q3 ?? item.summary.median);
+          const whisker = createSvgElement("line", {
+            class: "whisker",
+            x1: horizontalPosition,
+            x2: horizontalPosition,
+            y1: lowerPosition,
+            y2: upperPosition,
+            stroke: color,
+          });
+          const point = createSvgElement("circle", {
+            class: "point",
+            cx: horizontalPosition,
+            cy: y(item.summary.median),
+            r: 5,
+            fill: color,
+          });
+          point.append(createSvgElement(
+            "title",
+            {},
+            `${series.label} · ${item.label}: ${formatNumber(item.summary.median)} tok/s · middle 50% ${formatNumber(item.summary.q1)}–${formatNumber(item.summary.q3)} · ${item.summary.count} requests`,
+          ));
+          svg.append(whisker, point);
+        });
+      });
+
+      svg.append(createSvgElement("text", {
+        x: 18,
+        y: margin.top + innerHeight / 2,
+        transform: `rotate(-90 18 ${margin.top + innerHeight / 2})`,
+        "text-anchor": "middle",
+      }, "Tokens per second"));
+      host.append(svg);
+    }
+
+    function drawCharts() {
+      for (const row of document.querySelectorAll("[data-series-identifier]")) {
+        row.hidden = !visibleSeriesIdentifiers.has(row.dataset.seriesIdentifier);
+      }
+      drawComparisonChart("contextPrefillChart", "prefill_by_context");
+      drawComparisonChart("contextDecodeChart", "decode_by_context");
+      drawComparisonChart("promptPrefillChart", "prefill_by_prompt_tokens");
+    }
+
+    renderSummary();
+    renderWorkloadComparison();
+    drawCharts();
   </script>
 </body>
-</html>'''
+</html>
+'''
