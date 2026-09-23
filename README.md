@@ -10,14 +10,30 @@ The report charts:
 
 The analyzer is dependency-free and runs entirely on your computer.
 
+## Included public Qwen dataset
+
+[`data/qwen3.6-35b-a3b-q4_k_m.json`](data/qwen3.6-35b-a3b-q4_k_m.json)
+contains sanitized, record-level performance telemetry for the Qwen 3.6 35B A3B
+Q4_K_M model. Generate the charts from it without access to the original logs:
+
+```powershell
+lmstudio-throughput `
+  --input-json data/qwen3.6-35b-a3b-q4_k_m.json `
+  --output qwen-report.html `
+  --open
+```
+
 ## Privacy
 
-The repository contains **no LM Studio logs or extracted benchmark data**.
+Raw LM Studio logs are not committed. The public dataset retains only the model
+filename, calendar date, numeric token counts, context size, and measured
+prefill/decode rates. It contains no prompts, responses, token IDs, raw log lines,
+exact timestamps, local paths, or slot/task identifiers. Numeric token **counts** are
+necessary to analyze throughput by prompt and context size; no token content is kept.
 
 The analyzer reads only timing and slot-accounting lines. Generated reports contain
-aggregated counts and percentiles—not prompts, responses, raw log lines, source file
-paths, or model files. Common log, model, and report filenames are excluded in
-`.gitignore`.
+aggregated counts and percentiles. Common raw log, model, and report filenames are
+excluded in `.gitignore`.
 
 No network requests are made by the analyzer or generated report.
 
@@ -57,6 +73,18 @@ python -m lmstudio_analyzer --model "Qwen3\.6-35B-A3B" --open
 ```
 
 Use `--help` to see thresholds and optional aggregate JSON output.
+
+To create a reviewable record-level dataset from your own logs:
+
+```powershell
+lmstudio-throughput `
+  --model "Qwen3\.6-35B-A3B" `
+  --export-sanitized reports/qwen-telemetry.json
+```
+
+Review any exported file before publishing it. The exporter removes content and
+machine-local identifiers, while intentionally retaining model filenames, dates, and
+numeric performance fields.
 
 ## How context size is reconstructed
 

@@ -6,6 +6,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
+from .dataset import read_sanitized_dataset, write_sanitized_dataset
 from .parser import default_log_paths, parse_logs
 from .report import write_report
 from .stats import analyze
@@ -45,6 +46,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional destination for aggregate JSON. Contains no raw log text.",
     )
     parser.add_argument(
+        "--input-json",
+        type=Path,
+        help="Read a sanitized telemetry dataset instead of LM Studio log files.",
+    )
+    parser.add_argument(
+        "--export-sanitized",
+        type=Path,
+        help=(
+            "Export record-level numeric telemetry without prompts, responses, "
+            "token IDs, exact timestamps, local paths, or raw log lines."
+        ),
+    )
+    parser.add_argument(
         "--title",
         default="LM Studio Throughput Report",
         help="Report title.",
@@ -74,15 +88,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.decode_min_tokens < 1 or args.context_prefill_min_tokens < 1:
         raise SystemExit("Token thresholds must be positive integers.")
 
-    paths = args.paths or default_log_paths()
-    if not paths:
-        print(
-            "No default LM Studio log directories were found. Pass one or more paths.",
-            file=sys.stderr,
-        )
-        return 2
+    if args.input_json and args.paths:
+        raise SystemExit("Do not combine --input-json with log paths.")
 
-    records = parse_logs(paths, args.model)
+    if args.input_json:
+        records = read_sanitized_dataset(args.input_json.expanduser().resolve())
+    else:
+        paths = args.paths or default_log_paths()
+        if not paths:
+            print(
+                "No default LM Studio log directories were found. Pass one or more paths.",
+                file=sys.stderr,
+            )
+            return 2
+        records = parse_logs(paths, args.model)
     if not records:
         print(
             f"No completed timing records matched model expression {args.model!r}.",
@@ -97,6 +116,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     output = args.output.expanduser().resolve()
     write_report(summary, output, args.title, args.model)
+
+    if args.export_sanitized:
+        sanitized_output = args.export_sanitized.expanduser().resolve()
+        write_sanitized_dataset(records, sanitized_output)
+        print(f"Wrote sanitized telemetry: {sanitized_output}")
 
     if args.json_summary:
         json_output = args.json_summary.expanduser().resolve()
